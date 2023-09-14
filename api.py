@@ -1,70 +1,64 @@
 from flask import Flask, request, jsonify
-from flask_mysqldb import MySQL
-from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
-CORS(app)  # Enable Cross-Origin Resource Sharing for development
 
-# Configure MySQL database connection
-app.config['MYSQL_HOST'] = 'localhost'
-app.config['MYSQL_USER'] = 'your_username'
-app.config['MYSQL_PASSWORD'] = 'your_password'
-app.config['MYSQL_DB'] = 'your_database'
-mysql = MySQL(app)
+# Configure the PostgreSQL database URI
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://username:password@hostname:port/database_name'
 
+# Initialize SQLAlchemy
+db = SQLAlchemy(app)
+
+# Define a Person model
+class Person(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    track = db.Column(db.String(255), nullable=False)
+
+    def __init__(self, name, track):
+        self.name = name
+        self.track = track
+
+# Create the database tables
+db.create_all()
+
+# Create a new Person
 @app.route('/api', methods=['POST'])
-def create_person():
-    # Add a new person to the database
-    # Handle request data validation and insert into MySQL
-    new_person = request.json
-    name = new_person.get('name')
-    if name:
-            cur = mysql.connection.cursor()
-            cur.execute("INSERT INTO persons (name) VALUES (%s)", (name))
-            mysql.connection.commit()
-            cur.close()
-    		return jsonify({"message": "Person added successfully"}), 201
-    else:
-    		return jsonify({"message": "Name is required"}), 400
-    pass
+def create_Person():
+    data = request.get_json()
+    new_Person = Person(name=data["name"], track=data["track"])
+    db.session.add(new_Person)
+    db.session.commit()
+    return jsonify(new_Person.serialize()), 201
 
-@app.route('/api/<int:user_id>', methods=['GET', 'PUT', 'DELETE'])
-def person(user_id):
-    # Fetch, update, or delete a person by user_id
-    
-    if request.method == 'GET':
-        # Retrieve a person by user_id
-        cur = mysql.connection.cursor()
-        cur.execute("SELECT * FROM persons WHERE id = %s", (user_id,))
-        person = cur.fetchone()
-        cur.close()
-        if person:
-            return jsonify(person), 200
-        else:
-            return jsonify({"message": "Person not found"}), 404
-	
-	elif request.method == 'PUT':
-        # Update a person by user_id
-        data = request.get_json()
-        name = data.get('name')
-        
-        if name:
-            cur = mysql.connection.cursor()
-            cur.execute("UPDATE persons SET name = %s WHERE id = %s", (name, user_id))
-            mysql.connection.commit()
-            cur.close()
-            return jsonify({"message": "Person updated successfully"}), 200
-        else:
-            return jsonify({"message": "A name is required"}), 400
-    
-    elif request.method == 'DELETE':
-        # Delete a person by user_id
-        cur = mysql.connection.cursor()
-        cur.execute("DELETE FROM persons WHERE id = %s", (user_id))
-        mysql.connection.commit()
-        cur.close()
-        return jsonify({"message": "Person deleted successfully"}), 200
-    pass
+# Read a specific Person
+@app.route('/api/<int:user_id>', methods=['GET'])
+def get_Person(Person_id):
+    Person = Person.query.get(Person_id)
+    if Person:
+        return jsonify(Person.serialize())
+    return "Person not found", 404
+
+# Update a Person
+@app.route('/api/<int:user_id>', methods=['PUT'])
+def update_Person(Person_id):
+    data = request.get_json()
+    Person = Person.query.get(Person_id)
+    if Person:
+        Person.name = data["name"]
+        db.session.commit()
+        return jsonify(Person.serialize())
+    return "Person not found", 404
+
+# Delete a Person
+@app.route('/api/<int:user_id>', methods=['DELETE'])
+def delete_Person(Person_id):
+    Person = Person.query.get(Person_id)
+    if Person:
+        db.session.delete(Person)
+        db.session.commit()
+        return "Person deleted", 204
+    return "Person not found", 404
 
 if __name__ == '__main__':
     app.run(debug=True)
